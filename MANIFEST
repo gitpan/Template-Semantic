@@ -42,6 +42,7 @@ t/08_custom-filter.t
 t/09_libxml_options.t
 t/10_xinclude.t
 t/10_xinclude.xml
+t/11_exp_to_xpath.t
 t/TestBase.pm
 xt/dependencies.t
 xt/perlcritic.t

@@ -6,13 +6,13 @@ __DATA__
 --- vars
 'id("foo")' => 'xxx'
 --- template
-<html>
+<div>
     <span id="foo">replace me</span>
-</html>
+</div>
 --- expected
-<html>
+<div>
     <span id="foo">xxx</span>
-</html>
+</div>
 
 === xhtml default xmlns hack
 --- vars
@@ -78,22 +78,22 @@ __DATA__
 --- template
 <root>
     <div>
-        <img src="foo"/>
+        <img src="foo" />
         <span>bar</span>
     </div>
 </root>
 --- expected
 <root>
     <div>
-        <img src="foo"/>
+        <img src="foo" />
         <span>001</span>
     </div>
     <div>
-        <img src="foo"/>
+        <img src="foo" />
         <span>002</span>
     </div>
     <div>
-        <img src="foo"/>
+        <img src="foo" />
         <span>003</span>
     </div>
 </root>
@@ -111,7 +111,7 @@ __DATA__
 <root>
     
     <div>
-        <img src="foo"/>
+        <img src="foo" />
         <span>bar</span>
     </div>
 </root>
@@ -119,17 +119,17 @@ __DATA__
 <root>
     
     <div>
-        <img src="foo"/>
+        <img src="foo" />
         <span>001</span>
     </div>
     
     <div>
-        <img src="foo"/>
+        <img src="foo" />
         <span>002</span>
     </div>
     
     <div>
-        <img src="foo"/>
+        <img src="foo" />
         <span>003</span>
     </div>
 </root>
@@ -147,7 +147,7 @@ __DATA__
 <root>
     test
     <div>
-        <img src="foo"/>
+        <img src="foo" />
         <span>bar</span>
     </div>
 </root>
@@ -155,13 +155,20 @@ __DATA__
 <root>
     test
     <div>
-        <img src="foo"/>
+        <img src="foo" />
         <span>001</span>
     </div><div>
-        <img src="foo"/>
+        <img src="foo" />
         <span>002</span>
     </div><div>
-        <img src="foo"/>
+        <img src="foo" />
         <span>003</span>
     </div>
 </root>
+
+=== s/&/&amp;/ for "EntityRef: expecting ';'"
+--- vars
+--- template
+<a href="/?foo=&foo=">foo &amp; bar & baz</a>
+--- expected
+<a href="/?foo=&amp;foo=">foo &amp; bar &amp; baz</a>
