@@ -41,10 +41,11 @@ sub as_string {
     $opt{is_xhtml} = 1 unless defined $opt{is_xhtml};
     
     if ($self->{source} =~ /^<\?xml/) {
-        return $self->{dom}->serialize(1);
+        return $self->{dom}->serialize;
     }
     else { # for skip <?xml declaration.
         my $r = "";
+        
         if (my $dtd = $self->{dom}->internalSubset) {
             $r = $dtd->serialize . "\n";
         } elsif($opt{is_xhtml}) {
@@ -56,14 +57,15 @@ sub as_string {
             $self->{dom_hacked}++;
         }
         
-        if (my $root = $self->{dom}->documentElement) {
-            $r .= $root->serialize;
-            $r =~ s/\n*$/\n/;
-            
-            if ($self->{xmlns_hacked}) {
-                $r =~ s{(<html[^>]+?)xmlns=""}{$1xmlns="http://www.w3.org/1999/xhtml"};
-            }
+        local $XML::LibXML::skipXMLDeclaration = 1;
+        local $XML::LibXML::skipDTD = 1;
+        $r .= $self->{dom}->serialize;
+        $r =~ s/\n*$/\n/;
+
+        if ($self->{xmlns_hacked}) {
+            $r =~ s{(<html[^>]+?)xmlns=""}{$1xmlns="http://www.w3.org/1999/xhtml"};
         }
+    
         if ($self->{dom_hacked}) {
             $self->{dom}->removeInternalSubset;
             $self->{dom_hacked} = 0;
@@ -146,7 +148,12 @@ sub _assign_value {
              
             my $parted = $self->_to_node($node->serialize);
             $self->_query($parted, $value);
-            $node->replaceNode($parted);
+            
+            if ($node->isSameNode( $self->{dom}->documentElement )) { # to replace root
+                $self->{dom}->setDocumentElement($parted);
+            } else {
+                $node->replaceNode($parted);
+            }
         }
     }
     
@@ -157,11 +164,12 @@ sub _assign_value {
             }
             
             my $container = XML::LibXML::DocumentFragment->new;
+            my $tmpl_xml = $node->serialize;
             my $joint;
             for my $v (@$value) {
                 next if ref($v) ne 'HASH';
                 
-                my $tmpl = $self->_to_node($node->serialize);
+                my $tmpl = $self->_to_node($tmpl_xml);
                 $self->_query($tmpl, $v);
                 $container->addChild($joint->cloneNode) if $joint;
                 $container->addChild($tmpl);
@@ -374,7 +382,7 @@ Gets the result as L<XML::LibXML::Document>.
 
 =head1 SEE ALSO
 
-L<Template::Semantic>
+L<Template::Semantic>, L<XML::LibXML::Document>
 
 =head1 AUTHOR
 
