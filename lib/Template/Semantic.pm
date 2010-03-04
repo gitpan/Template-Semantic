@@ -2,8 +2,9 @@ package Template::Semantic;
 use strict;
 use warnings;
 use 5.008000;
-our $VERSION = '0.04';
+our $VERSION = '0.05';
 use Carp;
+use Scalar::Util qw/blessed/;
 use XML::LibXML;
 use Template::Semantic::Document;
 use Template::Semantic::Filter;
@@ -36,7 +37,9 @@ sub define_filter {
 sub call_filter {
     my ($self, $name) = @_;
     $name ||= "";
-    $self->{filter}{$name} or croak "Filter $name not defined.";
+    my $filter = ref($self) ? $self->{filter}{$name}
+                            : Template::Semantic::Filter->can($name);
+    $filter or croak "Filter $name not defined.";
 }
 
 sub process {
@@ -46,7 +49,8 @@ sub process {
     my $source;
     if (ref($template) eq 'SCALAR') {
         $source = $$template;
-    } elsif (ref $template) {
+    } elsif (ref($template) eq 'GLOB'
+        or blessed($template) && $template->isa('GLOB')) {
         $source = do { local $/; <$template> };
     } else {
         open(my $fh, '<', $template) or croak $!;
@@ -74,18 +78,12 @@ Template::Semantic - Use pure XHTML/XML as a template
   print Template::Semantic->process('template.html', {
       'title, h1' => 'Naoki Tomita',
       'ul.urls li' => [
-          {
-              'a' => 'Homepage >',
-              'a@href' => 'http://e8y.net/',
-          },
-          {
-              'a' => 'Twitter >',
-              'a@href' => 'http://twitter.com/tomita/',
-          },
+          { 'a' => 'Profile & Contacts', 'a@href' => 'http://e8y.net/', },
+          { 'a' => 'Twitter',            'a@href' => 'http://twitter.com/tomita/', },
       ],
   });
 
-template:
+template.html
 
   <html>
       <head><title>person name</title></head>
@@ -104,8 +102,8 @@ output:
       <body>
           <h1>Naoki Tomita</h1>
           <ul class="urls">
-              <li><a href="http://e8y.net/">Homepage &gt;</a></li>
-              <li><a href="http://twitter.com/tomita/">Twitter &gt;</a></li>
+              <li><a href="http://e8y.net/">Profile &amp; Contacts</a></li>
+              <li><a href="http://twitter.com/tomita/">Twitter</a></li>
           </ul>
       </body>
   </html>
@@ -116,8 +114,6 @@ Template::Semantic is a template engine for XHTML/XML based on L<XML::LibXML>
 that doesn't use any template syntax. This module takes pure XHTML/XML as a template,
 and uses XPath or CSS selectors to assign values.
 
-B<This is beta release. Your feedback is welcome.>
-
 =head1 METHODS
 
 =over 4
@@ -126,13 +122,15 @@ B<This is beta release. Your feedback is welcome.>
 
 Constructs a new C<Template::Semantic> object.
 
-  my $ts = Template::Semantic->new;
-  my $out = $ts->process(...);
+  my $ts = Template::Semantic->new(
+      ...
+  );
+  my $res = $ts->process(...);
 
 If you do not want to change the options from the defaults, you may skip
 C<new()> and call C<process()> directly:
 
-  my $out = Template::Semantic->process(...);
+  my $res = Template::Semantic->process(...);
 
 Set %options if you want to change parser options:
 
@@ -148,42 +146,42 @@ Set if you want to replace XML parser. It should be L<XML::LibXML> based.
 
 =item * (others)
 
-All other parameters are applied to the XML parser as method calls (C<<
-$parser->$key($value) >>). Template::Semantic uses this configuration by
-default:
+All other parameters are applied to the XML parser as method calls
+(C<< $parser->$key($value) >>). Template::Semantic uses this configuration
+by default:
 
   no_newwork => 1  # faster
-  recover    => 2  # "no warnings" style parser
+  recover    => 2  # "no warnings" style
 
 See L<XML::LibXML::Parser/PARSER OPTIONS> for details.
 
-  # "use strict;" style parser
+  # "use strict;" style
   my $ts = Template::Semantic->new( recover => 0 );
   
-  # "use warnings;" style parser
+  # "use warnings;" style
   my $ts = Template::Semantic->new( recover => 1 );
 
 =back
 
-=item $out = $ts->process($filename, \%vars)
+=item $res = $ts->process($filename, \%vars)
 
-=item $out = $ts->process(\$text, \%vars)
+=item $res = $ts->process(\$text, \%vars)
 
-=item $out = $ts->process(FH, \%vars)
+=item $res = $ts->process(FH, \%vars)
 
 Process a template and return a L<Template::Semantic::Document> object.
 
 The first parameter is the input template, which may take one of several forms:
 
   # filename
-  my $out = Template::Semantic->process('template.html', $vars);
+  my $res = Template::Semantic->process('template.html', $vars);
   
   # text reference
-  my $out = Template::Semantic->process(\'<html><body>foo</body></html>', $vars);
+  my $res = Template::Semantic->process(\'<html><body>foo</body></html>', $vars);
   
-  # file handle
-  my $out = Template::Semantic->process($fh, $vars);
-  my $out = Template::Semantic->process(\*DATA, $vars);
+  # file handle, GLOB
+  my $res = Template::Semantic->process($fh, $vars);
+  my $res = Template::Semantic->process(\*DATA, $vars);
 
 The second parameter is a value set to bind the template. $vars should be a
 hash-ref of selectors and corresponding values.  See the L</SELECTOR> and
@@ -205,7 +203,9 @@ See the L</Filter> section.
 
 =head1 SELECTOR
 
-Use XPath expression or CSS selector as a selector.
+Use XPath expression or CSS selector as a selector. If the expression
+doesn't look like XPath, it is considered CSS selector and converted
+into XPath internally.
 
   print Template::Semantic->process($template, {
       
@@ -221,8 +221,8 @@ Use XPath expression or CSS selector as a selector.
       
       # CSS selector sample that indicate <tag>
       'title'         => ...,
-      '.foo span.bar' => ...,
       '#foo'          => ...,
+      '.foo span.bar' => ...,
       
       # CSS selector sample that indicate @attr
       'img#foo@src'     => ...,
@@ -231,13 +231,18 @@ Use XPath expression or CSS selector as a selector.
   
   });
 
-Note 1: CSS selectors are converted to XPath internally. You can use '@attr'
-in the selector to select a specific attribute to act on (unlike CSS, which
-only lets you select elements).
+Template::Semantic allows some selector syntax that is different
+from usual XPath for your convenience.
 
-Note 2: You can use 'id()' function in XHTML (with C<< <html xmlns="..." >>)
-without using L<XML::LibXML::XPathContext>. This module sets C<xmlns="">
-namespace declarations automatically if the template is like XHTML.
+1. You can use xpath C<'//div'> without using L<XML::LibXML::XPathContext>
+even if your template has default namespace (C<< <html xmlns="..."> >>).
+
+2. You can use C<'id("foo")'> function to find element with C<id="foo">
+instead of C<xml:id="foo"> without DTD. Note: use C<'//*[@xml:id="foo"]'>
+if your template uses C<xml:id="foo">.
+
+3. You can C<'@attr'> syntax with CSS selector that specifies the attribute.
+This is original syntax of this module.
 
 
 =head1 VALUE TYPE
@@ -281,7 +286,7 @@ I<undef:> Delete the element/attirbute that the selector indicates.
 
 =item * selector => XML::LibXML::Node
 
-Replace the inner content by the node. Note: XML::LibXML::Attr isn't supported.
+Replace the inner content by the node. XML::LibXML::Attr isn't supported.
 
   $ts->process($template, {
       'h1' => do { XML::LibXML::Text->new('foo') },
@@ -304,10 +309,10 @@ I<Hash-ref:> Sub query of the part.
       'div.foo' => {
           'a' => undef,
       },
-  
+      
       # same as above
       'div.foo a' => undef,
-  
+      
       # xpath '.' = current node (itself)
       'a#bar' => {
           '.'       => 'foobar',
@@ -342,7 +347,7 @@ of the array-ref should be hash-ref.
   __DATA__
   <table class="list">
       <tr>
-          <td></td>
+          <th></th>
           <td></td>
       </tr>
   </table>
@@ -373,10 +378,13 @@ Output:
 
 =item * selector => \&foo
 
-I<Code-ref:> Callback subroutine.  The callback receives the inner HTML in
-C<$_> and an L<XML::LibXML::Node> object as the first argument.  Its return
-value is handled per this list of value types (scalar to replace content, undef
-to delete, etc.).
+I<Code-ref:> Callback subroutine. The callback receives
+
+  $_    => innerHTML
+  $_[0] => XML::LibXML::Node object (X::L::Element, X::L::Attr, ...)
+
+Its return value is handled per this list of value types
+(scalar to replace content, undef to delete, etc.).
 
   $ts->process($template, {
       # samples
@@ -386,7 +394,7 @@ to delete, etc.).
       # sample: use $_
       'h1' => sub { uc },  # <h1>foo</h1> => <h1>FOO</h1>
       
-      # sample: use arg
+      # sample: use $_[0]
       'h1' => sub {
           my $node = shift;
           $node->nodeName; # <h1>foo</h1> => <h1>h1</h1>
